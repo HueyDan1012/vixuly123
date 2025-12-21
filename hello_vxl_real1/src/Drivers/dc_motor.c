@@ -7,13 +7,16 @@
 #define DIR_DDR  DDRD
 
 // Mask bit để thao tác nhanh (tránh ảnh hưởng chân khác của PORTD)
-#define L_IN1 (1 << 4)
-#define L_IN2 (1 << 5)
-#define R_IN3 (1 << 6)
-#define R_IN4 (1 << 7)
+#define L_IN1 (1 << 4)  // PD4
+#define L_IN2 (1 << 5)  // PD5
+#define R_IN3 (1 << 6)  // PD6
+#define R_IN4 (1 << 7)  // PD7
 
 // Mask cho tất cả các chân Dir
 #define DIR_MASK (L_IN1 | L_IN2 | R_IN3 | R_IN4)
+
+// Dead zone compensation cho L298N (motor không quay nếu PWM < 100)
+#define MOTOR_DEADZONE 100
 
 void Motor_Init(void) {
     // 1. Cấu hình chân PWM (PB1/OC1A và PB2/OC1B) là Output
@@ -53,8 +56,8 @@ static inline void set_direction_left(int16_t speed) {
         // Lùi: IN1 Low, IN2 High
         DIR_PORT = (DIR_PORT & ~L_IN1) | L_IN2;
     } else {
-        // Dừng thả trôi (hoặc phanh tùy driver): Low Low
-        DIR_PORT &= ~(L_IN1 | L_IN2);
+        // Dừng: Phanh điện (High High) - Hiệu quả hơn cho balancing robot
+        DIR_PORT |= (L_IN1 | L_IN2);
     }
 }
 
@@ -66,7 +69,8 @@ static inline void set_direction_right(int16_t speed) {
         // Lùi: IN3 Low, IN4 High
         DIR_PORT = (DIR_PORT & ~R_IN3) | R_IN4;
     } else {
-        DIR_PORT &= ~(R_IN3 | R_IN4);
+        // Dừng: Phanh điện (High High)
+        DIR_PORT |= (R_IN3 | R_IN4);
     }
 }
 
@@ -83,11 +87,20 @@ void Motor_Control(int16_t speed_L, int16_t speed_R) {
     if (pwm_R > MOTOR_MAX_PWM) pwm_R = MOTOR_MAX_PWM;
     else if (pwm_R < -MOTOR_MAX_PWM) pwm_R = -MOTOR_MAX_PWM;
 
-    // 2. Cài đặt chiều quay (Direction)
+    // 2. Dead zone compensation
+    // Nếu PWM < DEADZONE thì set = 0 (motor không đủ lực để quay)
+    if (abs(pwm_L) < MOTOR_DEADZONE && pwm_L != 0) {
+        pwm_L = (pwm_L > 0) ? MOTOR_DEADZONE : -MOTOR_DEADZONE;
+    }
+    if (abs(pwm_R) < MOTOR_DEADZONE && pwm_R != 0) {
+        pwm_R = (pwm_R > 0) ? MOTOR_DEADZONE : -MOTOR_DEADZONE;
+    }
+
+    // 3. Cài đặt chiều quay (Direction)
     set_direction_left(pwm_L);
     set_direction_right(pwm_R);
 
-    // 3. Cài đặt tốc độ (Magnitude)
+    // 4. Cài đặt tốc độ (Magnitude)
     // Lấy trị tuyệt đối để nạp vào thanh ghi PWM (vì thanh ghi chỉ nhận số dương)
     OCR1A = (uint16_t)abs(pwm_L); // Motor Trái
     OCR1B = (uint16_t)abs(pwm_R); // Motor Phải
