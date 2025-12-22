@@ -1,3 +1,10 @@
+/*
+ * main_test_motor.c
+ * Kiểm tra động cơ DC, chiều quay và PWM Timer1
+ */
+
+#define F_CPU 16000000UL
+
 #include <avr/io.h>
 #include <util/delay.h>
 #include "dc_motor.h"
@@ -71,6 +78,6 @@ int main(void) {
 
         Motor_Stop();
         PORTB &= ~(1 << LED_PIN);
-        _delay_ms(2000); // Nghỉ 2s rồi lặp lại
+        _delay_ms(2000); 
     }
 }

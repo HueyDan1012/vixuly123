@@ -1,35 +1,40 @@
-#ifndef FILTER_H
-#define FILTER_H
+#ifndef FILTER_H_
+#define FILTER_H_
 
 #include <stdint.h>
-#include <mpu6050.h>
 
-#define KALMAN_Q_SHIFT 12
-#define KALMAN_ONE (1 << KALMAN_Q_SHIFT)
+// Hệ số Scale: 1000
+#define FILTER_SCALE 1000L
 
-// Complementary Filter
+// --- COMPLEMENTARY FILTER (PURE INTEGER) ---
 typedef struct {
-    int32_t current_deg;
+    int32_t Angle;      // Đơn vị: milli-degree
+    int32_t K_Gyro;     // Hệ số tin tưởng Gyro (Ví dụ: 980 cho 0.98)
+    int32_t K_Accel;    // Hệ số tin tưởng Accel (Ví dụ: 20 cho 0.02)
+                        // K_Gyro + K_Accel phải bằng 1000
+} CompFilter_t;
 
-} Complementary_t;
-
-void Complementary_Init(Complementary_t* filter);
-int32_t Complementary_Update(Complementary_t* filter, MPU6050_Data* data ,uint16_t dt_ms);
-
-// Kalman Filter
-
+// --- KALMAN FILTER (WRAPPER) ---
+// Bên trong vẫn dùng float để giữ độ chính xác thuật toán
 typedef struct {
-int32_t angle;
-int32_t bias ;
-
-int32_t P00,P01, P10,P11;
-
-// Tuning
-int32_t Q_angle;
-int32_t Q_bias;
-int32_t R_measure;
+    float Q_angle;
+    float Q_bias;
+    float R_measure;
+    float Angle;
+    float Bias;
+    float P[2][2];
 } Kalman_t;
 
-int32_t Kalman_Update(Kalman_t* filter ,volatile MPU6050_Data* data,uint16_t dt_ms);
-void Kalman_Init(Kalman_t* filter);
-#endif // FILTER_H
+// --- Function Prototypes ---
+
+// 1. Integer Complementary Functions
+// alpha: 0 đến 1000 (ví dụ 980 = 0.98)
+void CompFilter_Init(CompFilter_t *filter, int32_t alpha_x1000);
+int32_t CompFilter_Update(CompFilter_t *filter, int32_t accel_angle, int32_t gyro_rate, int32_t dt_ms);
+
+// 2. Kalman Functions
+void Kalman_Init(Kalman_t *kalman);
+// Input/Output là int32_t, nhưng tính toán bên trong là float
+int32_t Kalman_Update(Kalman_t *kalman, int32_t accel_angle, int32_t gyro_rate, int32_t dt_ms);
+
+#endif /* FILTER_H_ */

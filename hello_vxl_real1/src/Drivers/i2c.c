@@ -1,78 +1,79 @@
-#include "i2c.h"
-#include <avr/io.h>
-#include <util/twi.h>
+/*
+ * i2c.c
+ * Implementation of TWI (I2C) for ATmega328P
+ */
 
-void i2c_init(void) {
-    // Set SCL frequency = 400kHz
-    TWSR = 0; // Prescaler value = 1
-    TWBR = ((F_CPU / SCL_CLOCK) - 16) / 2;
-    // Enable TWI
+#include <avr/io.h>
+#include "i2c.h"
+
+void I2C_Init(void)
+{
+    // 1. Set Prescaler to 1 (TWPS0 = 0, TWPS1 = 0)
+    // TWSR status register bits 0 and 1 control prescaler
+    TWSR = 0x00;
+
+    // 2. Calculate and Set Bit Rate Register (TWBR)
+    // Formula: TWBR = ((F_CPU / SCL_CLOCK) - 16) / 2
+    TWBR = (uint8_t)(((F_CPU / SCL_CLOCK) - 16) / 2);
+
+    // 3. Enable TWI Module
+    // TWEN: TWI Enable bit in TWCR (Control Register)
     TWCR = (1 << TWEN);
 }
 
-uint8_t i2c_start(uint8_t address) {
-    // Gửi START
+void I2C_Start(void)
+{
+    // Send Start Condition
+    // TWINT: Clear interrupt flag to start operation
+    // TWSTA: Start condition bit
+    // TWEN: Enable TWI
     TWCR = (1 << TWINT) | (1 << TWSTA) | (1 << TWEN);
-    
-    // Timeout cho START
-    uint16_t timeout = 10000;
-    while (!(TWCR & (1 << TWINT))) {
-        if (--timeout == 0) return 1; // Lỗi Timeout
-    }
 
-    // Gửi Địa chỉ
-    TWDR = address;
-    TWCR = (1 << TWINT) | (1 << TWEN);
-
-    // Timeout cho Gửi Địa chỉ
-    timeout = 10000;
-    while (!(TWCR & (1 << TWINT))) {
-        if (--timeout == 0) return 1; // Lỗi Timeout
-    }
-    
-    return 0; // Thành công
+    // Wait for TWINT flag to be set (operation complete)
+    while (!(TWCR & (1 << TWINT)));
 }
 
-void i2c_stop(void) {
-    // Gửi STOP
+void I2C_Stop(void)
+{
+    // Send Stop Condition
+    // TWSTO: Stop condition bit
     TWCR = (1 << TWINT) | (1 << TWSTO) | (1 << TWEN);
+    
+    // Note: We don't wait for TWINT after Stop, the hardware handles it automatically.
 }
 
-uint8_t i2c_write(uint8_t data) {
+void I2C_Write(uint8_t data)
+{
+    // Load data into TWI Data Register
     TWDR = data;
-    TWCR = (1 << TWINT) | (1 << TWEN);
-    
-    // [QUAN TRỌNG] Thêm Timeout cho Write
-    uint16_t timeout = 10000;
-    while (!(TWCR & (1 << TWINT))) {
-        if (--timeout == 0) return 1; // Lỗi Timeout
-    }
 
-    return 0; 
+    // Clear TWINT to start transmission
+    TWCR = (1 << TWINT) | (1 << TWEN);
+
+    // Wait for transmission to complete
+    while (!(TWCR & (1 << TWINT)));
 }
 
-uint8_t i2c_read_ack(void) {
-    // Đọc với ACK
+uint8_t I2C_Read_Ack(void)
+{
+    // Read byte and send ACK (Acknowledge)
+    // TWEA: TWI Enable Acknowledge bit
     TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWEA);
-    
-    // [QUAN TRỌNG] Thêm Timeout cho Read ACK
-    uint16_t timeout = 10000;
-    while (!(TWCR & (1 << TWINT))) {
-        if (--timeout == 0) return 0xFF; // Trả về rác nếu lỗi
-    }
+
+    // Wait for data to be received
+    while (!(TWCR & (1 << TWINT)));
 
     return TWDR;
 }
 
-uint8_t i2c_read_nack(void) {
-    // Đọc với NACK (byte cuối)
+uint8_t I2C_Read_Nack(void)
+{
+    // Read byte and send NACK (No Acknowledge)
+    // Used for the last byte of a read sequence
     TWCR = (1 << TWINT) | (1 << TWEN);
-    
-    // [QUAN TRỌNG] Thêm Timeout cho Read NACK
-    uint16_t timeout = 10000;
-    while (!(TWCR & (1 << TWINT))) {
-        if (--timeout == 0) return 0xFF; // Trả về rác nếu lỗi
-    }
+
+    // Wait for data to be received
+    while (!(TWCR & (1 << TWINT)));
 
     return TWDR;
 }
