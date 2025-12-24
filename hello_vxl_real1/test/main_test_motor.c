@@ -1,8 +1,3 @@
-/*
- * main_test_motor.c
- * Kiểm tra động cơ DC, chiều quay và PWM Timer1
- */
-
 #define F_CPU 16000000UL
 
 #include <avr/io.h>

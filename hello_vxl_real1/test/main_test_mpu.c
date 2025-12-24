@@ -38,7 +38,7 @@ char buffer[100]; // Buffer để chứa chuỗi in ra
 int main(void) {
     // 1. Khởi tạo
     UART_Init();
-    I2C_Init();
+    // I2C_Init();
     MPU6050_Init();
     
     // Bật đèn LED PB5 (D13) để báo nguồn
