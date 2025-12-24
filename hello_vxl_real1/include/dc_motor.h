@@ -33,7 +33,7 @@
 // Giới hạn PWM
 // Timer1 Mode 5 (8-bit Fast PWM) có đỉnh là 255 (0x00FF)
 #define MAX_PWM         255
-#define MIN_PWM         100  // Deadzone
+#define MIN_PWM         40  // Deadzone
 
 // --- Function Prototypes ---
 void Motor_Init(void);
