@@ -7,7 +7,7 @@
 
 void MPU6050_Init(void)
 {   
-    I2C_Init();
+    
     // 1. Wake up the MPU6050 (It starts in sleep mode)
     I2C_Start();
     I2C_Write((MPU6050_ADDR << 1) | 0); // Address + Write bit

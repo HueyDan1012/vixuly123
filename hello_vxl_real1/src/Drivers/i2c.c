@@ -20,23 +20,42 @@ void I2C_Init(void)
     // TWEN: TWI Enable bit in TWCR (Control Register)
     TWCR = (1 << TWEN);
 }
-
+volatile uint8_t i2c_error_flag = 0;
+void I2C_WaitForComplete(void) {
+    uint16_t timeout_counter = 0;
+    while (!(TWCR & (1 << TWINT))) 
+    {
+        timeout_counter++;
+        if (timeout_counter >= I2C_TIMEOUT) 
+        {
+            // --- XỬ LÝ KHI BỊ TREO ---
+            i2c_error_flag = 1; // Đánh dấu lỗi
+            
+            // Cưỡng chế Reset lại module TWI để thoát trạng thái treo
+            TWCR = 0; 
+            TWCR = (1 << TWEN); 
+            return; // Thoát ngay
+        }
+    }
+}
 void I2C_Start(void)
 {
     // Send Start Condition
     // TWINT: Clear interrupt flag to start operation
     // TWSTA: Start condition bit
     // TWEN: Enable TWI
+    i2c_error_flag = 0;
     TWCR = (1 << TWINT) | (1 << TWSTA) | (1 << TWEN);
 
     // Wait for TWINT flag to be set (operation complete)
-    while (!(TWCR & (1 << TWINT)));
+    I2C_WaitForComplete();
 }
 
 void I2C_Stop(void)
 {
     // Send Stop Condition
     // TWSTO: Stop condition bit
+    if (i2c_error_flag) return;
     TWCR = (1 << TWINT) | (1 << TWSTO) | (1 << TWEN);
     
     // Note: We don't wait for TWINT after Stop, the hardware handles it automatically.
@@ -45,35 +64,39 @@ void I2C_Stop(void)
 void I2C_Write(uint8_t data)
 {
     // Load data into TWI Data Register
+    if (i2c_error_flag) return;
     TWDR = data;
 
     // Clear TWINT to start transmission
     TWCR = (1 << TWINT) | (1 << TWEN);
 
     // Wait for transmission to complete
-    while (!(TWCR & (1 << TWINT)));
+    I2C_WaitForComplete();
 }
 
 uint8_t I2C_Read_Ack(void)
 {
-    // Read byte and send ACK (Acknowledge)
-    // TWEA: TWI Enable Acknowledge bit
+    if (i2c_error_flag) return 0; // Trả về 0 nếu đang lỗi
+
     TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWEA);
-
-    // Wait for data to be received
-    while (!(TWCR & (1 << TWINT)));
-
+    
+    I2C_WaitForComplete();
+    
+    if (i2c_error_flag) return 0; // Trả về 0 nếu timeout
     return TWDR;
 }
 
 uint8_t I2C_Read_Nack(void)
 {
-    // Read byte and send NACK (No Acknowledge)
-    // Used for the last byte of a read sequence
+    if (i2c_error_flag) return 0;
+
     TWCR = (1 << TWINT) | (1 << TWEN);
-
-    // Wait for data to be received
-    while (!(TWCR & (1 << TWINT)));
-
+    
+    I2C_WaitForComplete();
+    
+    if (i2c_error_flag) return 0;
     return TWDR;
+}
+uint8_t I2C_IsError(void) {
+    return i2c_error_flag;
 }

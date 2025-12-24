@@ -36,74 +36,66 @@ void Motor_Init(void)
     OCR1B = 0; // Duty Cycle M2
 }
 
-void Motor_L_Control(int16_t speed)
-{
-    // Motor Left dùng PD4, PD5
-    if (speed > 0) 
-    {
-        // Tiến
-        MOTOR_DIR_PORT |= (1 << M1_IN1_PIN);
-        MOTOR_DIR_PORT &= ~(1 << M1_IN2_PIN);
-    } 
-    else if (speed < 0) 
-    {
-        // Lùi
-        MOTOR_DIR_PORT &= ~(1 << M1_IN1_PIN);
-        MOTOR_DIR_PORT |= (1 << M1_IN2_PIN);
-        speed = -speed; // Lấy trị tuyệt đối
-    } 
-    else 
-    {
-        // Dừng thả trôi (Coasting) hoặc Phanh (Braking)
-        // Ở đây dùng Phanh (Low-Low) để robot đứng vững hơn
-        MOTOR_DIR_PORT &= ~(1 << M1_IN1_PIN);
-        MOTOR_DIR_PORT &= ~(1 << M1_IN2_PIN);
-        OCR1A = 0;
-        return;
+void Motor_L_Control(int16_t speed) {
+    // 1. BÙ VÙNG CHẾT (Logic quan trọng nhất)
+    if (speed > 0) {
+        speed += MIN_PWM; // Ví dụ: PID tính ra 5 -> Motor nhận 55 -> QUAY ĐƯỢC
+    } else if (speed < 0) {
+        speed -= MIN_PWM; // Ví dụ: PID tính ra -5 -> Motor nhận -55
     }
 
-    // Giới hạn tốc độ
-    if (speed > MAX_PWM) speed = MAX_PWM;
-    if (speed < MIN_PWM) speed = 0; // Cắt bỏ vùng chết
-
-    // Ghi vào thanh ghi Timer1 kênh A (PB1)
-    OCR1A = (uint16_t)speed;
-}
-
-void Motor_R_Control(int16_t speed)
-{
-    // Motor Right dùng PD6, PD7
-    if (speed > 0) 
-    {
-        MOTOR_DIR_PORT |= (1 << M2_IN1_PIN);
-        MOTOR_DIR_PORT &= ~(1 << M2_IN2_PIN);
+    // 2. ĐIỀU KHIỂN CHIỀU VÀ GIỚI HẠN
+    if (speed > 0) {
+        if (speed > 255) speed = 255;
+        PORTD |= (1 << PD4);
+        PORTD &= ~(1 << PD5);
+        OCR1A = (uint8_t)speed;
     } 
-    else if (speed < 0) 
-    {
-        MOTOR_DIR_PORT &= ~(1 << M2_IN1_PIN);
-        MOTOR_DIR_PORT |= (1 << M2_IN2_PIN);
+    else if (speed < 0) {
         speed = -speed;
+        if (speed > 255) speed = 255;
+        PORTD &= ~(1 << PD4);
+        PORTD |= (1 << PD5);
+        OCR1A = (uint8_t)speed;
     } 
-    else 
-    {
-        MOTOR_DIR_PORT &= ~(1 << M2_IN1_PIN);
-        MOTOR_DIR_PORT &= ~(1 << M2_IN2_PIN);
-        OCR1B = 0;
-        return;
+    else {
+        // Speed = 0 -> Dừng hẳn
+        PORTD &= ~(1 << PD4);
+        PORTD &= ~(1 << PD5);
+        OCR1A = 0;
     }
-
-    if (speed > MAX_PWM) speed = MAX_PWM;
-    if (speed < MIN_PWM) speed = 0;
-
-    // Ghi vào thanh ghi Timer1 kênh B (PB2)
-    OCR1B = (uint16_t)speed;
 }
 
-void Motor_Stop(void)
-{
-    // Tắt hết các chân Direction
-    MOTOR_DIR_PORT &= ~((1 << M1_IN1_PIN) | (1 << M1_IN2_PIN) | 
-                        (1 << M2_IN1_PIN) | (1 << M2_IN2_PIN));
-    OCR1A = 0;
-    OCR1B = 0;
+void Motor_R_Control(int16_t speed) {
+    // Tương tự cho motor phải
+    if (speed > 0) {
+        speed += MIN_PWM;
+    } else if (speed < 0) {
+        speed -= MIN_PWM;
+    }
+
+    if (speed > 0) {
+        if (speed > 255) speed = 255;
+        PORTD |= (1 << PD6);
+        PORTD &= ~(1 << PD7);
+        OCR1B = (uint8_t)speed;
+    } 
+    else if (speed < 0) {
+        speed = -speed;
+        if (speed > 255) speed = 255;
+        PORTD &= ~(1 << PD6);
+        PORTD |= (1 << PD7);
+        OCR1B = (uint8_t)speed;
+    } 
+    else {
+        PORTD &= ~(1 << PD6);
+        PORTD &= ~(1 << PD7);
+        OCR1B = 0;
+    }
+}
+
+void Motor_Stop(void) {
+    PORTD &= ~(1 << PD4); PORTD &= ~(1 << PD5);
+    PORTD &= ~(1 << PD6); PORTD &= ~(1 << PD7);
+    OCR1A = 0; OCR1B = 0;
 }

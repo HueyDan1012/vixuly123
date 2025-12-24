@@ -1,0 +1,134 @@
+/*
+ * Self-Balancing Robot Firmware
+ * Method: Sampling Loop using Timer0 Overflow Interrupt
+ * Timer0 Config: Normal Mode, Prescaler 1 -> Overflow every 16us (VERY FAST)
+ */
+
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
+
+#include "i2c.h"
+#include "mpu6050.h"
+#include "filter.h"
+#include "pid.h"
+#include "dc_motor.h"
+
+// --- CONFIGURATION ---
+#define KP_VAL          15000L 
+#define KI_VAL          80L    
+#define KD_VAL          1200L  
+#define TARGET_ANGLE    0      
+
+// --- GLOBAL VARIABLES ---
+volatile uint8_t sys_tick_flag = 0; 
+
+// [QUAN TRỌNG]: Phải dùng uint16_t vì cần đếm đến 625
+volatile uint16_t timer_counter = 0; 
+
+char buffer[64];
+MPU6050_t mpu_data;
+CompFilter_t angle_filter;
+PID_Config_t balance_pid;
+int32_t gyro_offset_x = 0;
+uint8_t print_counter = 0;
+
+// --- UART FUNCTIONS ---
+void UART_Init(void) {
+    UBRR0H = 0; UBRR0L = 103; 
+    UCSR0B = (1 << RXEN0) | (1 << TXEN0);
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+}
+void UART_Tx(char data) { while (!(UCSR0A & (1 << UDRE0))); UDR0 = data; }
+void UART_Print(char *str) { while (*str) UART_Tx(*str++); }
+
+// --- TIMER0 INIT (PRESCALER 1) ---
+void Timer0_Init(void) {
+    // 1. Normal Mode
+    TCCR0A = 0x00; 
+    
+    // 2. Prescaler 1 (No Prescaling)
+    // CS00 = 1, CS01 = 0, CS02 = 0
+    // Tần số ngắt: 62.5 kHz (16us một lần)
+    TCCR0B = (1 << CS00); 
+
+    // 3. Reset Counter
+    TCNT0 = 0;
+
+    // 4. Enable Overflow Interrupt
+    TIMSK0 |= (1 << TOIE0); 
+}
+
+// --- TIMER0 OVERFLOW ISR ---
+// Hàm này chạy mỗi 16 micro giây (Cực nhanh)
+ISR(TIMER0_OVF_vect) 
+{
+    timer_counter++;
+    
+    // 16us * 625 = 10,000us = 10ms
+    if (timer_counter >= 625) {
+        timer_counter = 0;  
+        sys_tick_flag = 1;  // Bật cờ PID loop
+    }
+}
+
+// --- CALIBRATION ---
+void Calibrate_Gyro(void) {
+    int32_t sum = 0;
+    const int samples = 500;
+    PORTB |= (1 << PB5); 
+    for (int i = 0; i < samples; i++) {
+        MPU6050_Read_All(&mpu_data);
+        sum += mpu_data.Gyro_X_RAW;
+        _delay_ms(2);
+    }
+    gyro_offset_x = sum / samples;
+    PORTB &= ~(1 << PB5); 
+}
+
+int main(void)
+{
+    // 1. Setup
+    UART_Init();
+    
+    MPU6050_Init();
+    
+    
+    DDRB |= (1 << PB5); 
+
+    
+    
+
+    
+    
+    // 2. Start Timer0 (Prescaler 1)
+    Timer0_Init();
+    sei(); 
+
+    while (1) 
+    {
+        if (sys_tick_flag == 1) 
+        {
+            sys_tick_flag = 0; 
+
+            // --- A. Đọc MPU ---
+            MPU6050_Read_All(&mpu_data);
+
+            // --- B. Tính toán PID/Motor ... (Phần này giữ nguyên)
+            
+            // --- C. Debug ---
+            print_counter++;
+            if (print_counter >= 10) { 
+                print_counter = 0;
+                // Chỉ in ngắn gọn để tiết kiệm thời gian CPU
+                sprintf(buffer, "G:%d\r\n", (int)mpu_data.Gyro_X_RAW);
+                UART_Print(buffer);
+                PORTB ^= (1 << PB5); 
+            }
+        }
+    }
+}

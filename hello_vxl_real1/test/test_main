@@ -18,7 +18,7 @@
 
 // 1. OFFSET GYRO (QUAN TRỌNG: ĐIỀN SỐ BẠN ĐO ĐƯỢC VÀO ĐÂY)
 // Nếu chưa đo, hãy để tạm là 0 hoặc -245 (ví dụ)
-#define GYRO_OFFSET_HARDCODE  0
+#define GYRO_OFFSET_HARDCODE  -245 
 
 // 2. PID PARAMETERS (Đã nhân 1000)
 // Ví dụ: Kp = 18.0 -> 18000

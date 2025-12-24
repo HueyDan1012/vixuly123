@@ -1,0 +1,152 @@
+/*
+ * TEST MAIN: READ FILTERED ANGLE ONLY
+ * Configuration: Timer0 Normal Mode, Prescaler 1 (16us Tick)
+ * Loop Time: 10ms (Count 625 ticks)
+ */
+
+#define F_CPU 16000000UL
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
+
+// --- INCLUDE DRIVERS ---
+#include "i2c.h"
+#include "mpu6050.h"
+#include "filter.h"
+// (Tạm thời không include PID và Motor để tập trung test góc)
+
+// --- CONFIGURATION ---
+// Nếu bạn đã đo được offset thì điền vào đây, nếu chưa thì để biến chạy Calibration
+#define GYRO_OFFSET_HARDCODE 0 
+
+// --- GLOBAL VARIABLES ---
+volatile uint8_t sys_tick_flag = 0; 
+// [QUAN TRỌNG] Phải là uint16_t vì đếm đến 625
+volatile uint16_t timer_counter = 0; 
+
+char buffer[64];
+MPU6050_t mpu_data;
+CompFilter_t angle_filter;
+int32_t gyro_offset_x = 0;
+uint8_t print_counter = 0;
+
+// --- UART FUNCTIONS (115200 Baud) ---
+void UART_Init(void) {
+    // 115200 baud @ 16MHz (UBRR = 16 + U2X0=1)
+    UBRR0H = 0; 
+    UBRR0L = 16; 
+    UCSR0A |= (1 << U2X0); // Double speed
+    UCSR0B = (1 << RXEN0) | (1 << TXEN0);
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+}
+void UART_Tx(char data) { while (!(UCSR0A & (1 << UDRE0))); UDR0 = data; }
+void UART_Print(char *str) { while (*str) UART_Tx(*str++); }
+
+// --- TIMER0 INIT (PRESCALER 1) ---
+void Timer0_Init(void) {
+    // 1. Normal Mode
+    TCCR0A = 0x00; 
+    
+    // 2. Prescaler 1 (No Prescaling)
+    // CS00 = 1 -> Clock chạy trực tiếp 16MHz
+    TCCR0B = (1 << CS00); 
+
+    // 3. Reset Counter
+    TCNT0 = 0;
+
+    // 4. Enable Overflow Interrupt
+    TIMSK0 |= (1 << TOIE0); 
+}
+
+// --- TIMER0 OVERFLOW ISR ---
+// Chạy mỗi 16us
+ISR(TIMER0_OVF_vect) 
+{
+    timer_counter++;
+    
+    // 16us * 625 = 10,000us = 10ms
+    if (timer_counter >= 625) {
+        timer_counter = 0;  
+        sys_tick_flag = 1;  // Bật cờ (100Hz)
+    }
+}
+
+// --- CALIBRATION ---
+void Calibrate_Gyro(void) {
+    int32_t sum = 0;
+    const int samples = 500;
+    PORTB |= (1 << PB5); 
+    for (int i = 0; i < samples; i++) {
+        MPU6050_Read_All(&mpu_data);
+        sum += mpu_data.Gyro_X_RAW;
+        _delay_ms(2);
+    }
+    gyro_offset_x = sum / samples;
+    PORTB &= ~(1 << PB5); 
+}
+
+int main(void)
+{
+    // 1. Setup Hardware
+    DDRB |= (1 << PB5); // LED Debug
+    UART_Init();
+    I2C_Init();
+    MPU6050_Init();
+    
+    // 2. Setup Filter
+    // Tin tưởng Gyro 98% (980/1000)
+    CompFilter_Init(&angle_filter, 980);
+
+    // 3. Calibration
+    UART_Print("Calibrating...\r\n");
+    Calibrate_Gyro();
+    UART_Print("Done! Reading Filtered Angle...\r\n");
+
+    // 4. Start Timer (Prescaler 1)
+    Timer0_Init();
+    sei(); 
+
+    while (1) 
+    {
+        // Chờ cờ 10ms
+        if (sys_tick_flag == 1) 
+        {
+            sys_tick_flag = 0; 
+
+            // --- A. Đọc MPU ---
+            MPU6050_Read_All(&mpu_data);
+
+            // --- B. Xử lý số liệu ---
+            
+            // 1. Tính Accel Angle (Góc gia tốc)
+            float acc_angle_f = atan2((float)mpu_data.Accel_Y_RAW, (float)mpu_data.Accel_Z_RAW) * 57.296f;
+            int32_t acc_angle_int = (int32_t)(acc_angle_f * 1000);
+
+            // 2. Tính Gyro Rate (Tốc độ góc)
+            int32_t gyro_val = mpu_data.Gyro_X_RAW - gyro_offset_x;
+            int32_t gyro_rate_int = (gyro_val * 15267L) / 1000;
+
+            // --- C. CHẠY FILTER (QUAN TRỌNG) ---
+            // Input: Accel & Gyro | Output: Góc đã lọc (Current Angle)
+            int32_t filtered_angle = CompFilter_Update(&angle_filter, acc_angle_int, gyro_rate_int, 10);
+
+            // --- D. Debug in ra Serial ---
+            print_counter++;
+            // Chỉ in mỗi 100ms (10 vòng) để không nghẽn UART
+            if (print_counter >= 10) { 
+                print_counter = 0;
+                
+                // In ra giá trị góc đã lọc (chia 1000 để lấy phần nguyên độ)
+                // Ví dụ: 15400 -> 15 độ
+                sprintf(buffer, "Filter_Angle: %ld\r\n", filtered_angle / 1000);
+                UART_Print(buffer);
+                
+                PORTB ^= (1 << PB5); // Nháy đèn báo hiệu
+            }
+        }
+    }
+}
