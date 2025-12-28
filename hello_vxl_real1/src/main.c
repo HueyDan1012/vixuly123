@@ -21,19 +21,17 @@
 #include "filter.h"
 #include "pid.h"
 
-// =============================================================
-//                CẤU HÌNH (TUNING PARAMETERS)
-// =============================================================
+
 
 // 1. OFFSET GYRO
-#define GYRO_OFFSET_HARDCODE 10
+#define GYRO_OFFSET_HARDCODE 100
 
 // 2. PID PARAMETERS (Đã nhân 1000)
 // Kp=20.0, Ki=0.08, Kd=1.2
 // Nếu robot vẫn yếu -> Tăng Kp lên 25000, 30000
-#define KP_VAL          8000L 
-#define KI_VAL          20L    
-#define KD_VAL          1800L  
+#define KP_VAL          19000L 
+#define KI_VAL          500L    
+#define KD_VAL          2900L  
 
 // 3. GÓC MỤC TIÊU
 #define TARGET_ANGLE    0      
@@ -77,6 +75,7 @@ void Print_Debug(int32_t angle, int16_t pwm) {
     if (count >= 10) { 
         count = 0;
         char buf[64];
+
         sprintf(buf, "A: %ld | P: %d\r\n", angle/1000, pwm);
         UART_Print(buf);
         
@@ -98,7 +97,7 @@ void Timer0_Init(void) {
 ISR(TIMER0_OVF_vect) {
     timer_counter++;
     // 1.024ms * 10 ~= 10.24ms -> ~100Hz
-    if (timer_counter >= 10) {
+    if (timer_counter >= 5) {
         timer_counter = 0;
         sys_tick_flag = 1; // Đánh thức Loop
     }
@@ -117,8 +116,8 @@ int main(void) {
     Motor_Stop();
 
     // 2. Setup Middleware
-    CompFilter_Init(&angle_filter, 980); // Tin Gyro 98%
-    PID_Init(&balance_pid, KP_VAL, KI_VAL, KD_VAL, 255); // Max PWM 255
+    CompFilter_Init(&angle_filter, 995); // Tin Gyro 98%
+    PID_Init(&balance_pid, KP_VAL, KI_VAL, KD_VAL, 170); // Max PWM 255
 
     // Bật đèn báo hiệu đã Init xong
     PORTB |= (1 << PB5);
@@ -148,15 +147,15 @@ int main(void) {
             int32_t current_angle = CompFilter_Update(&angle_filter, acc_angle_int, gyro_rate_int, 10);
 
             // --- D. PID COMPUTE ---
-            int16_t pid_output = PID_Compute(&balance_pid, current_angle, TARGET_ANGLE * 1000);
+            int16_t pid_output = PID_Compute(&balance_pid, current_angle, TARGET_ANGLE );
 
             // --- E. MOTOR CONTROL ---
             // Đã có Deadzone Compensation trong file dc_motor.c
-            Motor_L_Control(pid_output);
-            Motor_R_Control(pid_output);
+            Motor_L_Control(-pid_output);
+            Motor_R_Control(-pid_output);
 
             // --- F. DEBUG ---
-            Print_Debug(current_angle, pid_output);
+            Print_Debug(current_angle,pid_output);
         }
     }
 }
